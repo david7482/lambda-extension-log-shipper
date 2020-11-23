@@ -1,0 +1,1 @@
+# lambda-extension-log-shipper
