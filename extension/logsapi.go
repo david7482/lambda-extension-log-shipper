@@ -11,13 +11,13 @@ import (
 
 type SubscribeLogsParams struct {
 	// ListenPort is the port that our log server listens on.
-	ListenPort uint32
+	ListenPort int
 	// MaxItems is the maximum number of events to be buffered in memory. (default: 10000, minimum: 1000, maximum: 10000)
-	MaxItems uint32
+	MaxItems int
 	// MaxBytes is the maximum size in bytes of the logs to be buffered in memory. (default: 262144, minimum: 262144, maximum: 1048576)
-	MaxBytes uint32
+	MaxBytes int
 	// TimeoutMS is the maximum time (in milliseconds) for a batch to be buffered. (default: 1000, minimum: 100, maximum: 30000)
-	TimeoutMS uint32
+	TimeoutMS int
 }
 
 // SubscribeResponse is the response body that is received from Logs API on subscribe
