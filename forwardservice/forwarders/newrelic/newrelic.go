@@ -74,17 +74,24 @@ func (s *newrelic) SendLog(logs []logservice.Log) {
 	detailedLog.Common.Attributes = map[string]interface{}{
 		"service":    s.params.LambdaName,
 		"tag":        s.params.LambdaName,
+		"plugin":     "lambda-extension-log-shipper",
 		"aws.region": s.params.AWSRegion,
 	}
 	for _, log := range logs {
-		detailedLog.Logs = append(detailedLog.Logs, NRLog{
+		nrlog := NRLog{
 			Timestamp: log.Time.UnixNano() / 1e6,
 			Message:   log.Content,
 			Attributes: map[string]interface{}{
-				"aws.lambda_request_id":   log.RequestID,
-				"aws.lambda_ext_log_type": log.Type,
+				"aws.lambdaRequestId":  log.RequestID,
+				"aws.lambdaExtLogType": log.Type,
 			},
-		})
+		}
+		if log.Type == logservice.PlatformReport {
+			nrlog.Message = []byte(`"aws lambda report"`)
+			nrlog.Attributes["aws"] = json.RawMessage(log.Content)
+		}
+
+		detailedLog.Logs = append(detailedLog.Logs, nrlog)
 	}
 
 	// Compress NR logs payload
