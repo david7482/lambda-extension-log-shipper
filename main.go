@@ -14,22 +14,34 @@ import (
 
 	"github.com/david7482/lambda-extension-log-shipper/extension"
 	"github.com/david7482/lambda-extension-log-shipper/forwardservice"
+	"github.com/david7482/lambda-extension-log-shipper/forwardservice/forwarders/newrelic"
+	"github.com/david7482/lambda-extension-log-shipper/forwardservice/forwarders/stdout"
 	"github.com/david7482/lambda-extension-log-shipper/logservice"
+)
+
+const (
+	// ListenPort is the port that our log server listens on.
+	listenPort = 8443
+	// MaxItems is the maximum number of events to be buffered in memory. (default: 10000, minimum: 1000, maximum: 10000)
+	maxItems = 10000
+	// MaxBytes is the maximum size in bytes of the logs to be buffered in memory. (default: 262144, minimum: 262144, maximum: 1048576)
+	maxBytes = 262144
+	// TimeoutMS is the maximum time (in milliseconds) for a batch to be buffered. (default: 1000, minimum: 100, maximum: 30000)
+	timeoutMS = 1000
 )
 
 var (
 	extensionName = filepath.Base(os.Args[0]) // extension name has to match the filename
 	logTypes      = []extension.LogType{extension.Platform, extension.Function}
+	forwarders    = []forwardservice.Forwarder{stdout.New(), newrelic.New()}
 )
 
 type generalConfig struct {
 	AWSLambdaName *string
 	AWSRegion     *string
 	AWSRuntimeAPI *string
-	TimeoutMs     *int
-	MaxBytes      *int
-	MaxItems      *int
-	ListenPort    *int
+	LogLevel      *string
+	LogTimeFormat *string
 }
 
 func setupGeneralConfigs(app *kingpin.Application) generalConfig {
@@ -49,41 +61,38 @@ func setupGeneralConfigs(app *kingpin.Application) generalConfig {
 		Envar("AWS_LAMBDA_RUNTIME_API").
 		Required().String()
 
-	// the followings are general settings for Lambda Log API
-	config.TimeoutMs = app.
-		Flag("timeout", "The timeout setting for Lambda Log API (in milliseconds)").
-		Default("1000").Int()
-	config.MaxBytes = app.
-		Flag("maxbytes", "The maxbytes setting for Lambda Log API").
-		Default("262144").Int()
-	config.MaxItems = app.
-		Flag("maxitems", "The maxitems setting for Lambda Log API").
-		Default("10000").Int()
-	config.ListenPort = app.
-		Flag("port", "The port number that our log server listens on").
-		Default("8443").Int()
+	// the followings are general settings
+	config.LogLevel = app.
+		Flag("log-level", "The level of the logger").
+		Envar("LS_LOG_LEVEL").
+		Default("info").Enum("error", "warn", "info", "debug")
+	config.LogTimeFormat = app.
+		Flag("log-timeformat", "The timeformat of the logger").
+		Envar("LS_LOG_TIMEFORMAT").
+		Default("2006-01-02T15:04:05.000Z07:00").String()
 
 	return config
 }
 
 func setupForwarderConfigs(app *kingpin.Application) {
 	// let each forwarder setup its own configurations
-	for _, f := range forwardservice.Forwarders {
+	for _, f := range forwarders {
 		f.SetupConfigs(app)
 	}
 }
 
 func main() {
-	// Setup zerolog
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	zerolog.TimeFieldFormat = "2006-01-02T15:04:05.000Z07:00"
-	rootLogger := zerolog.New(os.Stdout).With().Timestamp().Logger()
-
 	// Setup configurations
-	app := kingpin.New("LS", "Lambda Extension Log Shipper").DefaultEnvars()
+	app := kingpin.New("lambda-extension-log-shipper", "Lambda Extension Log Shipper")
 	cfg := setupGeneralConfigs(app)
 	setupForwarderConfigs(app)
 	kingpin.MustParse(app.Parse(os.Args[1:]))
+
+	// Setup zerolog
+	lvl, _ := zerolog.ParseLevel(*cfg.LogLevel)
+	zerolog.SetGlobalLevel(lvl)
+	zerolog.TimeFieldFormat = *cfg.LogTimeFormat
+	rootLogger := zerolog.New(os.Stdout).With().Timestamp().Logger()
 
 	// Create root context
 	rootCtx, rootCtxCancelFunc := context.WithCancel(context.Background())
@@ -98,25 +107,29 @@ func main() {
 		rootLogger.Fatal().Err(err).Msg("fail to register extension")
 	}
 
-	wg := sync.WaitGroup{}
-	logQueue := make(chan logservice.Log, *cfg.MaxItems)
+	// Create the logs queue
+	logsQueue := make(chan []logservice.Log, 8)
 
 	// Start services
+	wg := sync.WaitGroup{}
 	wg.Add(1)
-	logSrv := logservice.New(logservice.LogServiceParams{
+	logSrv := logservice.New(logservice.ServiceParams{
 		LogAPIClient: extensionClient,
 		LogTypes:     logTypes,
-		LogQueue:     logQueue,
-		ListenPort:   *cfg.ListenPort,
-		MaxItems:     *cfg.MaxItems,
-		MaxBytes:     *cfg.MaxBytes,
-		TimeoutMS:    *cfg.TimeoutMs,
+		LogsQueue:    logsQueue,
+		ListenPort:   listenPort,
+		MaxItems:     maxItems,
+		MaxBytes:     maxBytes,
+		TimeoutMS:    timeoutMS,
 	})
 	logSrv.Run(rootCtx, &wg)
 
 	wg.Add(1)
-	forwardSrv := forwardservice.New(forwardservice.ForwardServiceParams{
-		LogQueue: logQueue,
+	forwardSrv := forwardservice.New(forwardservice.ServiceParams{
+		Forwarders: forwarders,
+		LogsQueue:  logsQueue,
+		LambdaName: *cfg.AWSLambdaName,
+		AWSRegion:  *cfg.AWSRegion,
 	})
 	forwardSrv.Run(rootCtx, &wg)
 

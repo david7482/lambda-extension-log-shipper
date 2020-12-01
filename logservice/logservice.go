@@ -18,11 +18,20 @@ type logAPIClient interface {
 	SubscribeLogs(ctx context.Context, types []extension.LogType, params extension.SubscribeLogsParams) (res extension.SubscribeResponse, err error)
 }
 
+type LogType string
+
+const (
+	PlatformStart       LogType = "platform.start"
+	PlatformReport      LogType = "platform.report"
+	PlatformFault       LogType = "platform.fault"
+	PlatformLogsDropped LogType = "platform.logsDropped"
+	Function            LogType = "function"
+)
+
 type Log struct {
 	Time      time.Time
-	Type      string
+	Type      LogType
 	RequestID string
-	Metrics   Metrics
 	Content   []byte
 }
 
@@ -37,20 +46,14 @@ type StartRecord struct {
 }
 
 type ReportRecord struct {
-	RequestID string  `json:"requestId"`
-	Metrics   Metrics `json:"metrics"`
+	RequestID string          `json:"requestId"`
+	Metrics   json.RawMessage `json:"metrics"`
 }
 
-type Metrics struct {
-	DurationMs      float64 `json:"durationMs"`
-	MaxMemoryUsedMB int     `json:"maxMemoryUsedMB"`
-	InitDurationMs  float64 `json:"initDurationMs,omitempty"`
-}
-
-type LogServiceParams struct {
+type ServiceParams struct {
 	LogAPIClient logAPIClient
 	LogTypes     []extension.LogType
-	LogQueue     chan<- Log
+	LogsQueue    chan<- []Log
 	ListenPort   int
 	MaxItems     int
 	MaxBytes     int
@@ -60,18 +63,18 @@ type LogServiceParams struct {
 type LogService struct {
 	logAPIClient logAPIClient
 	logTypes     []extension.LogType
-	logQueue     chan<- Log
+	logsQueue    chan<- []Log
 	listenPort   int
 	maxItems     int
 	maxBytes     int
 	timeoutMS    int
 }
 
-func New(params LogServiceParams) *LogService {
+func New(params ServiceParams) *LogService {
 	return &LogService{
 		logAPIClient: params.LogAPIClient,
 		logTypes:     params.LogTypes,
-		logQueue:     params.LogQueue,
+		logsQueue:    params.LogsQueue,
 		listenPort:   params.ListenPort,
 		maxItems:     params.MaxItems,
 		maxBytes:     params.MaxBytes,
@@ -95,40 +98,44 @@ func (s *LogService) Run(ctx context.Context, wg *sync.WaitGroup) {
 			return
 		}
 
+		var logs []Log
 		var requestID string
 		for _, msg := range messages {
-			switch msg.Type {
-			case "platform.start":
+			switch LogType(msg.Type) {
+			case PlatformStart:
 				var startRecord StartRecord
 				if err := json.Unmarshal(msg.Record, &startRecord); err != nil {
 					zerolog.Ctx(ctx).Error().Err(err).Msg("fail to parse platform.start record")
 					continue
 				}
 				requestID = startRecord.RequestID
-
-			case "platform.report":
+			case PlatformReport:
 				var reportRecord ReportRecord
 				if err := json.Unmarshal(msg.Record, &reportRecord); err != nil {
 					zerolog.Ctx(ctx).Error().Err(err).Msg("fail to parse platform.report record")
 					continue
 				}
-
-				s.logQueue <- Log{
+				logs = append(logs, Log{
 					Time:      msg.Time,
-					Type:      msg.Type,
+					Type:      LogType(msg.Type),
 					RequestID: reportRecord.RequestID,
-					Metrics:   reportRecord.Metrics,
-				}
-			case "function", "platform.fault", "platform.logsDropped":
-				s.logQueue <- Log{
+					Content:   reportRecord.Metrics,
+				})
+			case Function, PlatformFault, PlatformLogsDropped:
+				logs = append(logs, Log{
 					Time:      msg.Time,
-					Type:      msg.Type,
+					Type:      LogType(msg.Type),
 					RequestID: requestID,
 					Content:   msg.Record,
-				}
+				})
 			default:
 				//zerolog.Ctx(ctx).Info().Str("type", msg.Type).Msg("ignored log with unsupported type")
 			}
+		}
+
+		// write logs into logsQueue in batch
+		if len(logs) > 0 {
+			s.logsQueue <- logs
 		}
 	})
 
@@ -148,7 +155,7 @@ func (s *LogService) Run(ctx context.Context, wg *sync.WaitGroup) {
 		_ = server.Shutdown(ctx)
 
 		// Close log queue channel to notify forwarder
-		close(s.logQueue)
+		close(s.logsQueue)
 
 		// Notify when server is closed
 		zerolog.Ctx(ctx).Info().Msg("log service is closed")
@@ -156,7 +163,7 @@ func (s *LogService) Run(ctx context.Context, wg *sync.WaitGroup) {
 	}()
 
 	go func() {
-		zerolog.Ctx(ctx).Info().Msgf("log service is on http://%s", server.Addr)
+		zerolog.Ctx(ctx).Info().Msgf("log service is running on http://%s", server.Addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			zerolog.Ctx(ctx).Fatal().Err(err).Str("Addr", server.Addr).Msg("Fail to start log service")
 		}

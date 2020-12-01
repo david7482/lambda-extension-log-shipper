@@ -3,55 +3,60 @@ package forwardservice
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/rs/zerolog"
 	"gopkg.in/alecthomas/kingpin.v2"
 
-	"github.com/david7482/lambda-extension-log-shipper/forwardservice/forwarders/stdout"
 	"github.com/david7482/lambda-extension-log-shipper/logservice"
 )
 
-type forwarder interface {
-	SetupConfigs(app *kingpin.Application)
-	IsEnable() bool
-	SendLog(requestID string, time time.Time, content []byte)
-	SendMetrics(requestID string, time time.Time, metrics logservice.Metrics)
+type ForwarderParams struct {
+	LambdaName string
+	AWSRegion  string
 }
 
-var (
-	Forwarders = []forwarder{
-		stdout.New(),
-	}
-)
+type Forwarder interface {
+	SetupConfigs(app *kingpin.Application)
+	Init(params ForwarderParams)
+	IsEnable() bool
+	SendLog([]logservice.Log)
+}
 
-type ForwardServiceParams struct {
-	LogQueue <-chan logservice.Log
+type ServiceParams struct {
+	Forwarders []Forwarder
+	LogsQueue  <-chan []logservice.Log
+	LambdaName string
+	AWSRegion  string
 }
 
 type ForwardService struct {
-	logQueue <-chan logservice.Log
+	forwarders []Forwarder
+	logsQueue  <-chan []logservice.Log
 }
 
-func New(params ForwardServiceParams) *ForwardService {
-	return &ForwardService{
-		logQueue: params.LogQueue,
+func New(params ServiceParams) *ForwardService {
+	s := &ForwardService{
+		forwarders: params.Forwarders,
+		logsQueue:  params.LogsQueue,
 	}
+	for _, f := range s.forwarders {
+		f.Init(ForwarderParams{
+			LambdaName: params.LambdaName,
+			AWSRegion:  params.AWSRegion,
+		})
+	}
+	return s
 }
 
 func (s *ForwardService) Run(ctx context.Context, wg *sync.WaitGroup) {
 
 	go func() {
-		for log := range s.logQueue {
+		zerolog.Ctx(ctx).Info().Msg("forward service is running")
+		for logs := range s.logsQueue {
 			// Send log to each forwarder
-			for _, f := range Forwarders {
+			for _, f := range s.forwarders {
 				if f.IsEnable() {
-					switch log.Type {
-					case "platform.report":
-						f.SendMetrics(log.RequestID, log.Time, log.Metrics)
-					case "function":
-						f.SendLog(log.RequestID, log.Time, log.Content)
-					}
+					f.SendLog(logs)
 				}
 			}
 		}
