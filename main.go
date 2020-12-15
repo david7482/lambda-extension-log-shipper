@@ -63,11 +63,11 @@ func setupGeneralConfigs(app *kingpin.Application) generalConfig {
 
 	// the followings are general settings
 	config.LogLevel = app.
-		Flag("log-level", "The level of the logger").
+		Flag("log-level", "The level of the internal logger").
 		Envar("LS_LOG_LEVEL").
 		Default("info").Enum("error", "warn", "info", "debug")
 	config.LogTimeFormat = app.
-		Flag("log-timeformat", "The timeformat of the logger").
+		Flag("log-timeformat", "The time format of the internal logger").
 		Envar("LS_LOG_TIMEFORMAT").
 		Default("2006-01-02T15:04:05.000Z07:00").String()
 
