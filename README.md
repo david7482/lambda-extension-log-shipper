@@ -1,8 +1,8 @@
 # lambda-extension-log-shipper
 
 This project is a Lambda layer aims to ship your Lambda logs **directly** to any destination. This log shipper works like a 
-sidecar of the Lambda function (just like fluntd), so you could ship the logs to other destination and bypass CloudWatch Logs
-(and save cost !)
+sidecar of the Lambda function (just like fluntd). It would listen to your Lambda function logs via Lambda Logs API, so you 
+could ship the logs to a custom destination without CloudWatch Logs (and save cost !)
 
 
 Current supported forwarders:
@@ -10,7 +10,7 @@ Current supported forwarders:
 * [newrelic](./forwardservice/forwarders/stdout)
 * [stdout](./forwardservice/forwarders/newrelic)
 
-Other forwarder could be added easily; check [How to contribute](#How to contribute).
+Other forwarder could be added easily; check [Contribute](#contribute).
 
 ## Usage
 
@@ -87,7 +87,7 @@ This project uses the [AWS Lambda Logs API](https://docs.aws.amazon.com/lambda/l
 register itself as a sidecar of the running Lambda function. It starts an internal http server to listen to Lambda logs
 (include `platform` and `function` logs), which being aggregated in-memory and transferred to all the enabled log forwarders.
 
-## How to contribute
+## Contribute
 
 To add a new forwarder, just need to follow the 2 steps:
 
