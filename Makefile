@@ -20,7 +20,7 @@ mock:
 package: build
 	cd bin/ && zip -r extension.zip extensions/
 
-deploy-%:
+deploy-%: package
 	aws lambda publish-layer-version --layer-name "lambda-extension-log-shipper" --region $* --zip-file  "fileb://bin/extension.zip"
 
 clean:

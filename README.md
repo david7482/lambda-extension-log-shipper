@@ -7,8 +7,8 @@ could ship the logs to a custom destination without CloudWatch Logs (and save co
 
 Current supported forwarders:
 
-* [newrelic](./forwardservice/forwarders/stdout)
-* [stdout](./forwardservice/forwarders/newrelic)
+* [newrelic](./forwardservice/forwarders/newrelic)
+* [stdout](./forwardservice/forwarders/stdout)
 
 Other forwarder could be added easily; check [Contribute](#contribute).
 
