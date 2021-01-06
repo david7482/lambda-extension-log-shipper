@@ -14,7 +14,7 @@ import (
 	"github.com/david7482/lambda-extension-log-shipper/utils"
 )
 
-type newrelic struct {
+type Newrelic struct {
 	cfg        config
 	logger     zerolog.Logger
 	httpClient *http.Client
@@ -41,14 +41,14 @@ type NRLog struct {
 	Attributes map[string]interface{} `json:"attributes"`
 }
 
-func New() *newrelic {
-	return &newrelic{
+func New() *Newrelic {
+	return &Newrelic{
 		logger:     zerolog.New(os.Stdout).With().Str("forwarder", "newrelic").Timestamp().Logger(),
 		httpClient: &http.Client{},
 	}
 }
 
-func (s *newrelic) SetupConfigs(app *kingpin.Application) {
+func (s *Newrelic) SetupConfigs(app *kingpin.Application) {
 	s.cfg.Enable = app.
 		Flag("newrelic-enable", "Enable the newrelic forwarder").
 		Envar("LS_NEWRELIC_ENABLE").
@@ -59,16 +59,16 @@ func (s *newrelic) SetupConfigs(app *kingpin.Application) {
 		Default("").String()
 }
 
-func (s *newrelic) Init(params forwardservice.ForwarderParams) {
+func (s *Newrelic) Init(params forwardservice.ForwarderParams) {
 	s.params = params
 	s.logger = s.logger.With().Str("lambdaName", s.params.LambdaName).Str("awsRegion", s.params.AWSRegion).Logger()
 }
 
-func (s *newrelic) IsEnable() bool {
+func (s *Newrelic) IsEnable() bool {
 	return *s.cfg.Enable
 }
 
-func (s *newrelic) SendLog(logs []logservice.Log) {
+func (s *Newrelic) SendLog(logs []logservice.Log) {
 	// Build NR logs payload
 	var detailedLog NRDetailedLog
 	detailedLog.Common.Attributes = map[string]interface{}{

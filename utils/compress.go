@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"errors"
+	"io"
 	"io/ioutil"
 )
 
@@ -26,7 +27,7 @@ func Compress(d []byte) (*bytes.Buffer, error) {
 }
 
 // Decompress gzips the given input.
-func Decompress(b *bytes.Buffer) ([]byte, error) {
+func Decompress(b io.Reader) ([]byte, error) {
 	r, err := gzip.NewReader(b)
 	if err != nil {
 		return nil, err

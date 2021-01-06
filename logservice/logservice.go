@@ -183,7 +183,7 @@ func (s *LogService) logHandler(w http.ResponseWriter, r *http.Request) {
 				Content:   msg.Record,
 			})
 		default:
-			//zerolog.Ctx(ctx).Info().Str("type", msg.Type).Msg("ignored log with unsupported type")
+			// zerolog.Ctx(ctx).Info().Str("type", msg.Type).Msg("ignored log with unsupported type")
 		}
 	}
 

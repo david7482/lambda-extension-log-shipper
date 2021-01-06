@@ -218,6 +218,7 @@ func TestLogService_logHandler(t *testing.T) {
 			resp, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d", tt.args.Params.ListenPort), "", strings.NewReader(tt.args.logs))
 			require.NoError(t, err)
 			require.EqualValues(t, 200, resp.StatusCode)
+			resp.Body.Close()
 
 			logs := <-tt.args.Params.LogsQueue
 			require.Len(t, logs, 3)

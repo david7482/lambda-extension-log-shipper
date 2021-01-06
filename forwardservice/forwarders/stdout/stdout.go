@@ -10,7 +10,7 @@ import (
 	"github.com/david7482/lambda-extension-log-shipper/logservice"
 )
 
-type stdout struct {
+type Stdout struct {
 	cfg        config
 	logger     zerolog.Logger
 	lambdaName string
@@ -21,30 +21,30 @@ type config struct {
 	Enable *bool
 }
 
-func New() *stdout {
-	return &stdout{
+func New() *Stdout {
+	return &Stdout{
 		logger: zerolog.New(os.Stdout).With().Str("forwarder", "stdout").Timestamp().Logger(),
 	}
 }
 
-func (s *stdout) SetupConfigs(app *kingpin.Application) {
+func (s *Stdout) SetupConfigs(app *kingpin.Application) {
 	s.cfg.Enable = app.
 		Flag("stdout-enable", "Enable the stdout forwarder").
 		Envar("LS_STDOUT_ENABLE").
 		Default("true").Bool()
 }
 
-func (s *stdout) Init(params forwardservice.ForwarderParams) {
+func (s *Stdout) Init(params forwardservice.ForwarderParams) {
 	s.lambdaName = params.LambdaName
 	s.awsRegion = params.AWSRegion
 	s.logger = s.logger.With().Str("lambdaName", s.lambdaName).Str("awsRegion", s.awsRegion).Logger()
 }
 
-func (s *stdout) IsEnable() bool {
+func (s *Stdout) IsEnable() bool {
 	return *s.cfg.Enable
 }
 
-func (s *stdout) SendLog(logs []logservice.Log) {
+func (s *Stdout) SendLog(logs []logservice.Log) {
 	for _, log := range logs {
 		s.logger.Log().Time("time", log.Time).Str("lambdaRequestId", log.RequestID).RawJSON("content", log.Content).Send()
 	}
