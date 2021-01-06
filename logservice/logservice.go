@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -14,7 +15,8 @@ import (
 	"github.com/david7482/lambda-extension-log-shipper/extension"
 )
 
-type logAPIClient interface {
+//go:generate mockgen -destination=automocks/logapiclient.go -package=automocks . LogAPIClient
+type LogAPIClient interface {
 	SubscribeLogs(ctx context.Context, types []extension.LogType, params extension.SubscribeLogsParams) (res extension.SubscribeResponse, err error)
 }
 
@@ -30,7 +32,7 @@ const (
 
 type Log struct {
 	Time      time.Time
-	Type      LogType
+	Type      LogType `faker:"oneof: platform.start, platform.report, platform.fault, platform.logsDropped, function"`
 	RequestID string
 	Content   []byte
 }
@@ -51,9 +53,9 @@ type ReportRecord struct {
 }
 
 type ServiceParams struct {
-	LogAPIClient logAPIClient
+	LogAPIClient LogAPIClient
 	LogTypes     []extension.LogType
-	LogsQueue    chan<- []Log
+	LogsQueue    chan []Log
 	ListenPort   int
 	MaxItems     int
 	MaxBytes     int
@@ -61,7 +63,7 @@ type ServiceParams struct {
 }
 
 type LogService struct {
-	logAPIClient logAPIClient
+	logAPIClient LogAPIClient
 	logTypes     []extension.LogType
 	logsQueue    chan<- []Log
 	listenPort   int
@@ -84,64 +86,14 @@ func New(params ServiceParams) *LogService {
 
 func (s *LogService) Run(ctx context.Context, wg *sync.WaitGroup) {
 	router := http.NewServeMux()
-	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		body, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			zerolog.Ctx(ctx).Error().Err(err).Msg("fail to read all response body from log API")
-			return
-		}
-
-		var messages []Message
-		err = json.Unmarshal(body, &messages)
-		if err != nil {
-			zerolog.Ctx(ctx).Error().Err(err).Msg("fail to parse the logs")
-			return
-		}
-
-		var logs []Log
-		var requestID string
-		for _, msg := range messages {
-			switch LogType(msg.Type) {
-			case PlatformStart:
-				var startRecord StartRecord
-				if err := json.Unmarshal(msg.Record, &startRecord); err != nil {
-					zerolog.Ctx(ctx).Error().Err(err).Msg("fail to parse platform.start record")
-					continue
-				}
-				requestID = startRecord.RequestID
-			case PlatformReport:
-				var reportRecord ReportRecord
-				if err := json.Unmarshal(msg.Record, &reportRecord); err != nil {
-					zerolog.Ctx(ctx).Error().Err(err).Msg("fail to parse platform.report record")
-					continue
-				}
-				logs = append(logs, Log{
-					Time:      msg.Time,
-					Type:      LogType(msg.Type),
-					RequestID: reportRecord.RequestID,
-					Content:   reportRecord.Metrics,
-				})
-			case Function, PlatformFault, PlatformLogsDropped:
-				logs = append(logs, Log{
-					Time:      msg.Time,
-					Type:      LogType(msg.Type),
-					RequestID: requestID,
-					Content:   msg.Record,
-				})
-			default:
-				//zerolog.Ctx(ctx).Info().Str("type", msg.Type).Msg("ignored log with unsupported type")
-			}
-		}
-
-		// write logs into logsQueue in batch
-		if len(logs) > 0 {
-			s.logsQueue <- logs
-		}
-	})
+	router.HandleFunc("/", s.logHandler)
 
 	server := &http.Server{
 		Addr:    fmt.Sprintf("0.0.0.0:%d", s.listenPort),
 		Handler: router,
+		BaseContext: func(_ net.Listener) context.Context {
+			return ctx
+		},
 	}
 
 	go func() {
@@ -179,5 +131,64 @@ func (s *LogService) Run(ctx context.Context, wg *sync.WaitGroup) {
 	})
 	if err != nil {
 		zerolog.Ctx(ctx).Fatal().Err(err).Msg("fail to subscribe log API")
+	}
+}
+
+func (s *LogService) logHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		zerolog.Ctx(ctx).Error().Err(err).Msg("fail to read all response body from log API")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var messages []Message
+	err = json.Unmarshal(body, &messages)
+	if err != nil {
+		zerolog.Ctx(ctx).Error().Err(err).Msg("fail to parse the logs")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var logs []Log
+	var requestID string
+	for _, msg := range messages {
+		switch LogType(msg.Type) {
+		case PlatformStart:
+			var startRecord StartRecord
+			if err := json.Unmarshal(msg.Record, &startRecord); err != nil {
+				zerolog.Ctx(ctx).Error().Err(err).Msg("fail to parse platform.start record")
+				continue
+			}
+			requestID = startRecord.RequestID
+		case PlatformReport:
+			var reportRecord ReportRecord
+			if err := json.Unmarshal(msg.Record, &reportRecord); err != nil {
+				zerolog.Ctx(ctx).Error().Err(err).Msg("fail to parse platform.report record")
+				continue
+			}
+			logs = append(logs, Log{
+				Time:      msg.Time,
+				Type:      LogType(msg.Type),
+				RequestID: reportRecord.RequestID,
+				Content:   reportRecord.Metrics,
+			})
+		case Function, PlatformFault, PlatformLogsDropped:
+			logs = append(logs, Log{
+				Time:      msg.Time,
+				Type:      LogType(msg.Type),
+				RequestID: requestID,
+				Content:   msg.Record,
+			})
+		default:
+			//zerolog.Ctx(ctx).Info().Str("type", msg.Type).Msg("ignored log with unsupported type")
+		}
+	}
+
+	// write logs into logsQueue in batch
+	if len(logs) > 0 {
+		s.logsQueue <- logs
 	}
 }
