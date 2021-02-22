@@ -53,34 +53,37 @@ type ReportRecord struct {
 }
 
 type ServiceParams struct {
-	LogAPIClient LogAPIClient
-	LogTypes     []extension.LogType
-	LogsQueue    chan []Log
-	ListenPort   int
-	MaxItems     int
-	MaxBytes     int
-	TimeoutMS    int
+	LogAPIClient         LogAPIClient
+	LogTypes             []extension.LogType
+	LogsQueue            chan []Log
+	ListenPort           int
+	MaxItems             int
+	MaxBytes             int
+	TimeoutMS            int
+	EnablePlatformReport bool
 }
 
 type LogService struct {
-	logAPIClient LogAPIClient
-	logTypes     []extension.LogType
-	logsQueue    chan<- []Log
-	listenPort   int
-	maxItems     int
-	maxBytes     int
-	timeoutMS    int
+	logAPIClient         LogAPIClient
+	logTypes             []extension.LogType
+	logsQueue            chan<- []Log
+	listenPort           int
+	maxItems             int
+	maxBytes             int
+	timeoutMS            int
+	enablePlatformReport bool
 }
 
 func New(params ServiceParams) *LogService {
 	return &LogService{
-		logAPIClient: params.LogAPIClient,
-		logTypes:     params.LogTypes,
-		logsQueue:    params.LogsQueue,
-		listenPort:   params.ListenPort,
-		maxItems:     params.MaxItems,
-		maxBytes:     params.MaxBytes,
-		timeoutMS:    params.TimeoutMS,
+		logAPIClient:         params.LogAPIClient,
+		logTypes:             params.LogTypes,
+		logsQueue:            params.LogsQueue,
+		listenPort:           params.ListenPort,
+		maxItems:             params.MaxItems,
+		maxBytes:             params.MaxBytes,
+		timeoutMS:            params.TimeoutMS,
+		enablePlatformReport: params.EnablePlatformReport,
 	}
 }
 
@@ -164,6 +167,11 @@ func (s *LogService) logHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			requestID = startRecord.RequestID
 		case PlatformReport:
+			// Check if we need to send platform report to forwarders
+			if !s.enablePlatformReport {
+				break
+			}
+
 			var reportRecord ReportRecord
 			if err := json.Unmarshal(msg.Record, &reportRecord); err != nil {
 				zerolog.Ctx(ctx).Error().Err(err).Msg("fail to parse platform.report record")

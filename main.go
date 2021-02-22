@@ -37,11 +37,12 @@ var (
 )
 
 type generalConfig struct {
-	AWSLambdaName *string
-	AWSRegion     *string
-	AWSRuntimeAPI *string
-	LogLevel      *string
-	LogTimeFormat *string
+	AWSLambdaName        *string
+	AWSRegion            *string
+	AWSRuntimeAPI        *string
+	LogLevel             *string
+	LogTimeFormat        *string
+	EnablePlatformReport *bool
 }
 
 func setupGeneralConfigs(app *kingpin.Application) generalConfig {
@@ -70,6 +71,10 @@ func setupGeneralConfigs(app *kingpin.Application) generalConfig {
 		Flag("log-timeformat", "The time format of the internal logger").
 		Envar("LS_LOG_TIMEFORMAT").
 		Default("2006-01-02T15:04:05.000Z07:00").String()
+	config.EnablePlatformReport = app.
+		Flag("enable-platform-report", "Send Lambda platform report to all forwarders").
+		Envar("LS_ENABLE_PLATFORM_REPORT").
+		Default("true").Bool()
 
 	return config
 }
@@ -114,13 +119,14 @@ func main() {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	logSrv := logservice.New(logservice.ServiceParams{
-		LogAPIClient: extensionClient,
-		LogTypes:     logTypes,
-		LogsQueue:    logsQueue,
-		ListenPort:   listenPort,
-		MaxItems:     maxItems,
-		MaxBytes:     maxBytes,
-		TimeoutMS:    timeoutMS,
+		LogAPIClient:         extensionClient,
+		LogTypes:             logTypes,
+		LogsQueue:            logsQueue,
+		ListenPort:           listenPort,
+		MaxItems:             maxItems,
+		MaxBytes:             maxBytes,
+		TimeoutMS:            timeoutMS,
+		EnablePlatformReport: *cfg.EnablePlatformReport,
 	})
 	logSrv.Run(rootCtx, &wg)
 

@@ -21,7 +21,7 @@ $ make package
 
 Publish to Lambda layer using the `extension.zip` and get the produced layer arn.
 ```bash
-$ aws lambda publish-layer-version --layer-name "lambda-extension-log-shipper" --region <region> --zip-file  "fileb://bin/extension.zip"
+$ aws lambda publish-layer-version --layer-name "lambda-extension-log-shipper" --region <region> --zip-file  "fileb://bin/lambda-extension-log-shipper.zip"
 ```
 
 Add the Lambda layer to the Lambda function
@@ -79,6 +79,7 @@ The followings are general configurations. Check the README of each forwarder fo
 |---|---|---|
 |LS_LOG_LEVEL|info|The level of the internal logger|
 |LS_LOG_TIMEFORMAT|2006-01-02T15:04:05.000Z07:00|The time format of the internal logger|
+|LS_ENABLE_PLATFORM_REPORT|true|Send Lambda platform report to all forwarders|
 
 
 ## How it works
