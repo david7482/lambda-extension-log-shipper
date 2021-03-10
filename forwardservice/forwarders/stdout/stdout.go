@@ -49,3 +49,7 @@ func (s *Stdout) SendLog(logs []logservice.Log) {
 		s.logger.Log().Time("time", log.Time).Str("lambdaRequestId", log.RequestID).RawJSON("content", log.Content).Send()
 	}
 }
+
+func (s *Stdout) Shutdown() {
+
+}

@@ -20,6 +20,7 @@ type Forwarder interface {
 	Init(params ForwarderParams)
 	IsEnable() bool
 	SendLog([]logservice.Log)
+	Shutdown()
 }
 
 type ServiceParams struct {
@@ -58,6 +59,13 @@ func (s *ForwardService) Run(ctx context.Context, wg *sync.WaitGroup) {
 				if f.IsEnable() {
 					f.SendLog(logs)
 				}
+			}
+		}
+
+		zerolog.Ctx(ctx).Info().Msg("forward service is closing")
+		for _, f := range s.forwarders {
+			if f.IsEnable() {
+				f.Shutdown()
 			}
 		}
 

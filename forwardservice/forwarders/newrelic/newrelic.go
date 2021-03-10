@@ -72,9 +72,10 @@ func (s *Newrelic) SendLog(logs []logservice.Log) {
 	// Build NR logs payload
 	var detailedLog NRDetailedLog
 	detailedLog.Common.Attributes = map[string]interface{}{
+		"plugin":     "lambda-extension-log-shipper",
 		"service":    s.params.LambdaName,
 		"tag":        s.params.LambdaName,
-		"plugin":     "lambda-extension-log-shipper",
+		"aws.lambda": s.params.LambdaName,
 		"aws.region": s.params.AWSRegion,
 	}
 	for _, log := range logs {
@@ -135,4 +136,8 @@ func (s *Newrelic) SendLog(logs []logservice.Log) {
 		s.logger.Error().Msgf("NR logs response, status: %s, response: %s", httpRes.Status, string(body))
 		return
 	}
+}
+
+func (s *Newrelic) Shutdown() {
+
 }
