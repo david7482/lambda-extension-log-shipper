@@ -169,7 +169,7 @@ func (s *LogService) logHandler(w http.ResponseWriter, r *http.Request) {
 		case PlatformReport:
 			// Check if we need to send platform report to forwarders
 			if !s.enablePlatformReport {
-				break
+				continue
 			}
 
 			var reportRecord ReportRecord
